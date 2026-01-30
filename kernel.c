@@ -1,24 +1,29 @@
-/* 1. Hardware & Variables (Same as before) */
+
+/* --- 1. Hardware Communication (I/O) --- */
 unsigned char inb(unsigned short port) {
     unsigned char result;
     __asm__ volatile("inb %1, %0" : "=a"(result) : "Nd"(port));
     return result;
 }
 
+void outb(unsigned short port, unsigned char data) {
+    __asm__ volatile("outb %0, %1" : : "a"(data), "Nd"(port));
+}
+
+/* --- 2. Global Variables --- */
 volatile char* vidptr = (volatile char*)0xb8000;
 int cursor = 0;
-char cmd_buffer[80]; 
+char cmd_buffer[80]; // Fixed array for shell commands
 int cmd_idx = 0;
 
 unsigned char kbd_map[] = { 
     0, 27, '1','2','3','4','5','6','7','8','9','0','-','=','\b','\t',
     'Q','W','E','R','T','Y','U','I','O','P','[',']','\n', 0,
     'A','S','D','F','G','H','J','K','L',';','\'','`', 0,
-    '\\','Z','X','C','V', 'B','N','M',',','.','/', 0,'*',0,' ' 
+    '\\','Z','X','C','V','B','N','M',',','.','/', 0,'*',0,' ' 
 };
 
-/* 2. Screen Helpers (Updated print_at) */
-// This version automatically uses the system's current default color
+/* --- 3. Screen Helpers --- */
 void print_at(const char* message, int row, int col, unsigned char color) {
     int index = (row * 80 + col) * 2;
     for (int i = 0; message[i] != '\0'; i++) {
@@ -29,9 +34,9 @@ void print_at(const char* message, int row, int col, unsigned char color) {
 }
 
 void draw_ui() {
-    // Start with the rainbow in the command area
+    /* 1. Rainbow Background */
     for (int row = 0; row < 25; row++) {
-        unsigned char color = (unsigned char)((row % 16) << 4) | 0x0F; // Background + White Text
+        unsigned char color = (unsigned char)((row % 16) << 4) | 0x0F;
         for (int col = 0; col < 80; col++) {
             int index = (row * 80 + col) * 2;
             vidptr[index] = ' ';
@@ -39,36 +44,74 @@ void draw_ui() {
         }
     }
 
-    // DCON Title with Colorful Background (Blue background, Yellow text)
-    print_at("      DCON v1.0      ", 5, 29, 0x1E); // Background 0x10, Foreground 0x0E
+    /* 2. DCON Title Box (Blue Background, Yellow Text) */
+    print_at("      DCON v1.0      ", 5, 29, 0x1E);
 
-    // 4 Black lines, 4 chars from the edge (start at row 7, which is 2 lines after the title)
-    for (int row = 7; row < 11; row++) {
-        for (int col = 4; col < 76; col++) { // 4 spaces in from left and right
+    /* 3. Command Box (10 lines thick, Hits bottom row) */
+    for (int row = 15; row < 25; row++) {
+        for (int col = 4; col < 76; col++) {
             int index = (row * 80 + col) * 2;
             vidptr[index] = ' ';
-            vidptr[index + 1] = 0x00; // Black background/text
+            vidptr[index + 1] = 0x00; /* Solid Black */
         }
     }
 }
 
-/* 3. The "Brain" (Command Processor) - Same as before */
+/* --- 4. The Shell (Command Processor) --- */
 void run_command() {
-    // ... logic for CLEAR/DEAN commands ...
-    // Clear buffer for next command
-    for(int i=0; i<80; i++) cmd_buffer[i] = 0;
+    /* Check for "CL" (Clear) */
+    if (cmd_buffer[0] == 'C' && cmd_buffer[1] == 'L') {
+        draw_ui();
+    }
+    /* Check for "DEAN" (Blue Screen) */
+    else if (cmd_buffer[0] == 'D' && cmd_buffer[1] == 'E' && 
+             cmd_buffer[2] == 'A' && cmd_buffer[3] == 'N') {
+        for(int i=0; i<4000; i+=2) { vidptr[i]=' '; vidptr[i+1]=0x1F; }
+        print_at("DCON: DEAN MODE ACTIVATED", 10, 25, 0x1F);
+    }
+
+    /* Reset buffer for next use */
+    for(int i = 0; i < 80; i++) cmd_buffer[i] = 0;
     cmd_idx = 0;
 }
 
-/* 4. Keyboard Logic (Same as before) */
+/* --- 5. Keyboard Logic --- */
 void check_keyboard() {
-    // ... logic for keys ...
+    if (inb(0x64) & 0x01) {
+        unsigned char scancode = inb(0x60);
+        
+        if (scancode == 0x0E && cmd_idx > 0) { /* Backspace */
+            cmd_idx--;
+            cursor--;
+            vidptr[cursor * 2] = ' ';
+        } 
+        else if (scancode == 0x1C) { /* Enter Key */
+            run_command();
+            /* Move cursor back to start of the black box area */
+            cursor = 15 * 80 + 5; 
+        }
+        else if (scancode < 128) {
+            char letter = kbd_map[scancode];
+            if (letter != 0 && cmd_idx < 70) {
+                cmd_buffer[cmd_idx++] = letter;
+                vidptr[cursor * 2] = letter;
+                vidptr[cursor * 2 + 1] = 0x0F; /* White text */
+                cursor++;
+            }
+        }
+    }
 }
 
-/* 5. MAIN ENTRY POINT */
+/* --- 6. Entry Point --- */
 void kernel_main() {
     draw_ui();
-    cursor = 11 * 80 + 5; // Start typing inside the black box
-    while(1) { check_keyboard(); }
+    /* Set cursor to inside the 10-line black box */
+    cursor = 15 * 80 + 5; 
+
+    while(1) {
+        check_keyboard();
+        /* Tiny CPU delay */
+        for(volatile int d=0; d<1000; d++); 
+    }
 }
 
