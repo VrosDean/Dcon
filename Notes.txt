@@ -1,0 +1,3 @@
+Notes:
+errors like NS_ERROR_FAILURE and VERR_FILE_NOT_FOUND
+are because of VBOX. Use qemu.
