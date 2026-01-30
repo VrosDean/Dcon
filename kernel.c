@@ -7,7 +7,7 @@ unsigned char inb(unsigned short port) {
 
 volatile char* vidptr = (volatile char*)0xb8000;
 int cursor = 0;
-char cmd_buffer[80]; 
+char cmd_buffer[81]; 
 int cmd_idx = 0;
 
 unsigned char kbd_map[] = { 
@@ -39,7 +39,10 @@ void draw_ui() {
     }
     print_at("DCON v1.0", 5, 35);
     print_at("DEAN CONSOLE", 6, 34);
+    
+    /* Command Box: 10 lines, last line (row 23) is black */
     for (int row = 14; row < 24; row++) {
+        unsigned char box_color = (row == 23) ? 0x00 : 0x00; /* Both black for now */
         for (int col = 4; col < 76; col++) {
             int index = (row * 80 + col) * 2;
             vidptr[index] = ' ';
@@ -50,16 +53,15 @@ void draw_ui() {
 
 /* 3. Command Logic */
 void run_command() {
-    // Secret Green Screen: Type "DEAN"
     if (cmd_buffer[0] == 'D' && cmd_buffer[1] == 'E' && cmd_buffer[2] == 'A' && cmd_buffer[3] == 'N') {
         for(int i = 0; i < 4000; i += 2) {
             vidptr[i] = ' ';
-            vidptr[i+1] = 0x2F; // 0x2 is GREEN background
+            vidptr[i+1] = 0x2F; /* GREEN screen */
         }
-        print_at("DEAN GREEN SCREEN ACTIVATED", 12, 25);
+        print_at("DEAN GREEN SCREEN ACTIVATED. PRESS R TO RESET.", 12, 18);
     }
-    // To keep your text on screen, we DON'T call draw_ui here anymore!
     cmd_idx = 0;
+    for(int i=0; i<80; i++) cmd_buffer[i] = 0;
 }
 
 /* 4. Keyboard Driver */
@@ -67,19 +69,22 @@ void check_keyboard() {
     if (inb(0x64) & 0x01) {
         unsigned char scancode = inb(0x60);
         
-        if (scancode == 0x0E) { // BACKSPACE
+        if (scancode == 0x0E) { /* BACKSPACE */
             if (cmd_idx > 0) {
-                cmd_idx--;
-                cursor--;
+                cmd_idx--; cursor--;
                 vidptr[cursor * 2] = ' ';
             }
         } 
-        else if (scancode == 0x1C) { // ENTER
+        else if (scancode == 0x1C) { /* ENTER */
             run_command();
-            // Just move to the next line instead of clearing the screen
             cursor = ((cursor / 80) + 1) * 80 + 5;
         }
-        else if (scancode < 128) { // LETTERS
+        else if (scancode == 0x13) { /* R KEY - Reset Screen */
+            draw_ui();
+            cursor = 14 * 80 + 5;
+            cmd_idx = 0;
+        }
+        else if (scancode < 128) { /* LETTERS */
             char letter = kbd_map[scancode];
             if (letter != 0 && cmd_idx < 79) {
                 cmd_buffer[cmd_idx++] = letter;
