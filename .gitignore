@@ -1,0 +1,7 @@
+*.txt
+*.o
+*.bin
+*.iso
+isodir/
+qemu.log
+
