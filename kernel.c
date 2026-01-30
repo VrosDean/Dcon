@@ -7,7 +7,7 @@ unsigned char inb(unsigned short port) {
 
 volatile char* vidptr = (volatile char*)0xb8000;
 int cursor = 0;
-char cmd_buffer; 
+char cmd_buffer[80]; 
 int cmd_idx = 0;
 
 unsigned char kbd_map[] = { 
