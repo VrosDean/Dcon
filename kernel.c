@@ -1,15 +1,20 @@
-/* --- 1. HARDWARE & GLOBAL VARIABLES --- */
+/* --- 1. HARDWARE PORTS --- */
 unsigned char inb(unsigned short port) {
     unsigned char result;
     __asm__ volatile("inb %1, %0" : "=a"(result) : "Nd"(port));
     return result;
 }
 
+void outb(unsigned short port, unsigned char data) {
+    __asm__ volatile("outb %0, %1" : : "a"(data), "Nd"(port));
+}
+
+/* --- 2. GLOBAL VARIABLES --- */
 volatile char* vidptr = (volatile char*)0xb8000;
 int cursor = 0;
-char cmd_buffer[81]; 
+char cmd_buffer[80]; /* The Command Shelf */
 int cmd_idx = 0;
-int is_green_screen = 0; /* THE FLAG: Must be at the top! */
+int is_green_screen = 0; /* The Smart-R Flag */
 
 unsigned char kbd_map[] = { 
     0, 27, '1','2','3','4','5','6','7','8','9','0','-','=','\b','\t',
@@ -18,19 +23,20 @@ unsigned char kbd_map[] = {
     '\\','Z','X','C','V','B','N','M',',','.','/', 0,'*',0,' ' 
 };
 
-/* --- 2. SCREEN HELPERS --- */
+/* --- 3. SCREEN HELPERS --- */
 void print_at(const char* message, int row, int col) {
     int index = (row * 80 + col) * 2;
     for (int i = 0; message[i] != '\0'; i++) {
         vidptr[index] = message[i];
+        /* The Magic bitmask: Keep background (& 0xF0), White text (| 0x0F) */
         vidptr[index + 1] = (vidptr[index + 1] & 0xF0) | 0x0F; 
         index += 2;
     }
 }
 
 void draw_ui() {
+    /* 1. Bright Rainbow (No Black, No Gray) */
     unsigned char colors[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF};
-    /* Rainbow up to row 23 */
     for (int row = 0; row < 24; row++) {
         unsigned char bg = colors[row % 13] << 4;
         for (int col = 0; col < 80; col++) {
@@ -39,7 +45,7 @@ void draw_ui() {
             vidptr[index + 1] = bg;
         }
     }
-    /* Command Box (Black) */
+    /* 2. Command Box (10 lines thick) */
     for (int row = 14; row < 24; row++) {
         for (int col = 4; col < 76; col++) {
             int index = (row * 80 + col) * 2;
@@ -47,35 +53,43 @@ void draw_ui() {
             vidptr[index + 1] = 0x00; 
         }
     }
-    /* THE VERY LAST LINE (Black) */
+    /* 3. Absolute Last Line (Solid Black) */
     for (int col = 0; col < 80; col++) {
         int index = (24 * 80 + col) * 2;
         vidptr[index] = ' ';
-        vidptr[index + 2] = 0x00;
+        vidptr[index + 1] = 0x00;
     }
     print_at("DCON v1.0", 5, 35);
     print_at("DEAN CONSOLE", 6, 34);
     is_green_screen = 0;
 }
 
-/* --- 3. COMMAND BRAIN --- */
+/* --- 4. COMMAND LOGIC --- */
 void run_command() {
-    /* Check letters 1 by 1: D-E-A-N */
-    if (cmd_buffer[0] == 'D' && cmd_buffer[1] == 'E' && 
-        cmd_buffer[2] == 'A' && cmd_buffer[3] == 'N') {
-        for(int i = 0; i < 4000; i += 2) {
-            vidptr[i] = ' ';
-            vidptr[i+1] = 0x2F; /* Green Screen color */
-        }
+    /* DEAN Secret */
+    if (cmd_buffer[0] == 'D' && cmd_buffer[1] == 'E' && cmd_buffer[2] == 'A' && cmd_buffer[3] == 'N') {
+        for(int i = 0; i < 4000; i += 2) { vidptr[i] = ' '; vidptr[i+1] = 0x2F; }
         print_at("DEAN GREEN SCREEN ACTIVATED. PRESS R TO RESET.", 12, 18);
         is_green_screen = 1;
     }
-    /* Reset buffer */
+    /* HELP Command */
+    else if (cmd_buffer[0] == 'H' && cmd_buffer[1] == 'E' && cmd_buffer[2] == 'L' && cmd_buffer[3] == 'P') {
+        print_at("DCON COMMANDS:      ", 15, 5);
+        print_at("- DEAN : GREEN MODE ", 16, 5);
+        print_at("- HELP : THIS LIST  ", 17, 5);
+        print_at("- CLS  : CLEAR BOX  ", 18, 5);
+    }
+    /* CLS Command */
+    else if (cmd_buffer[0] == 'C' && cmd_buffer[1] == 'L' && cmd_buffer[2] == 'S') {
+        draw_ui();
+    }
+    
+    /* Clear the shelf for next time */
     for(int i=0; i<80; i++) cmd_buffer[i] = 0;
     cmd_idx = 0;
 }
 
-/* --- 4. KEYBOARD DRIVER --- */
+/* --- 5. KEYBOARD DRIVER --- */
 void check_keyboard() {
     if (inb(0x64) & 0x01) {
         unsigned char scancode = inb(0x60);
@@ -88,36 +102,7 @@ void check_keyboard() {
         } 
         else if (scancode == 0x1C) { /* ENTER */
             run_command();
-            void run_command() {
-    /* 1. Check for "DEAN" */
-    if (cmd_buffer[0] == 'D' && cmd_buffer[1] == 'E' && 
-        cmd_buffer[2] == 'A' && cmd_buffer[3] == 'N') {
-        for(int i = 0; i < 4000; i += 2) {
-            vidptr[i] = ' ';
-            vidptr[i+1] = 0x2F; 
-        }
-        print_at("DEAN GREEN SCREEN ACTIVATED. PRESS R TO RESET.", 12, 18);
-        is_green_screen = 1;
-    }
-    /* 2. NEW: Check for "HELP" */
-    else if (cmd_buffer[0] == 'H' && cmd_buffer[1] == 'E' && 
-             cmd_buffer[2] == 'L' && cmd_buffer[3] == 'P') {
-        print_at("DCON COMMANDS:        ", 15, 5);
-        print_at("- DEAN : SECRET SCREEN", 16, 5);
-        print_at("- HELP : SHOW THIS    ", 17, 5);
-        print_at("- R    : RESET RAINBOW", 18, 5);
-        print_at("- CLS  : CLEAR BOX    ", 19, 5);
-    }
-    /* 3. Check for "CLS" */
-    else if (cmd_buffer[0] == 'C' && cmd_buffer[1] == 'L' && cmd_buffer[2] == 'S') {
-        draw_ui();
-    }
-
-    /* Reset buffer */
-    for(int i=0; i<80; i++) cmd_buffer[i] = 0;
-    cmd_idx = 0;
-}
-
+            if (!is_green_screen) cursor = ((cursor / 80) + 1) * 80 + 5;
         }
         else if (scancode == 0x13 && is_green_screen == 1) { /* SMART R */
             draw_ui();
@@ -126,9 +111,9 @@ void check_keyboard() {
         else if (scancode < 128) { /* LETTERS */
             char letter = kbd_map[scancode];
             if (letter != 0 && cmd_idx < 79) {
-                cmd_buffer[cmd_idx++] = letter;
+                cmd_buffer[cmd_idx] = letter;
+                cmd_idx++;
                 vidptr[cursor * 2] = letter;
-                /* Use green background if in green screen mode */
                 vidptr[cursor * 2 + 1] = (is_green_screen) ? 0x2F : 0x0F;
                 cursor++;
             }
@@ -136,9 +121,13 @@ void check_keyboard() {
     }
 }
 
+/* --- 6. MAIN ENTRY --- */
 void kernel_main() {
     draw_ui();
     cursor = 14 * 80 + 5;
-    while(1) { check_keyboard(); }
+    while(1) { 
+        check_keyboard(); 
+        for(volatile int d=0; d<1000; d++); /* CPU Breath */
+    }
 }
 
