@@ -1,4 +1,4 @@
-/* --- 1. Hardware Communication (I/O) --- */
+/* --- 1. Hardware Communication --- */
 unsigned char inb(unsigned short port) {
     unsigned char result;
     __asm__ volatile("inb %1, %0" : "=a"(result) : "Nd"(port));
@@ -9,10 +9,10 @@ void outb(unsigned short port, unsigned char data) {
     __asm__ volatile("outb %0, %1" : : "a"(data), "Nd"(port));
 }
 
-/* --- 2. Screen & Memory Helpers --- */
+/* --- 2. Variables --- */
 volatile char* vidptr = (volatile char*)0xb8000;
 int cursor = 0;
-char dean_check[5] = "    "; // Buffer for "DEAN"
+char dean_check[5] = "    "; 
 
 unsigned char kbd_map[] = { 
     0, 27, '1','2','3','4','5','6','7','8','9','0','-','=','\b','\t',
@@ -21,6 +21,7 @@ unsigned char kbd_map[] = {
     '\\','Z','X','C','V','B','N','M',',','.','/', 0,'*',0,' ' 
 };
 
+/* --- 3. Helpers --- */
 void print_at(const char* message, int row, int col) {
     int index = (row * 80 + col) * 2;
     for (int i = 0; message[i] != '\0'; i++) {
@@ -41,27 +42,7 @@ void draw_rainbow() {
     }
 }
 
-/* --- 3. THE DISK DRIVER (ATA PIO) --- */
-void read_disk(int LBA, unsigned short* target) {
-    outb(0x1F6, (0xE0 | ((LBA >> 24) & 0x0F)));
-    outb(0x1F2, 1); 
-    outb(0x1F3, (unsigned char)LBA);
-    outb(0x1F4, (unsigned char)(LBA >> 8));
-    outb(0x1F5, (unsigned char)(LBA >> 16));
-    outb(0x1F7, 0x20); // Command 0x20 = Read
-
-    while (inb(0x1F7) & 0x80);      /* Wait while Busy */
-    while (!(inb(0x1F7) & 0x08));   /* Wait until Data Ready */
-
-    for (int i = 0; i < 256; i++) {
-        /* Input Word (2 bytes) */
-        unsigned short tmp = inb(0x1F0);
-        tmp |= (inb(0x1F0) << 8);
-        target[i] = tmp;
-    }
-}
-
-/* --- 4. Keyboard & Interaction --- */
+/* --- 4. Keyboard & Recovery Logic --- */
 void check_keyboard() {
     if (inb(0x64) & 0x01) {
         unsigned char scancode = inb(0x60);
@@ -76,7 +57,13 @@ void check_keyboard() {
         else if (scancode == 0x13) { // 'R' Key (Recover)
             draw_rainbow();
             print_at("DCON RECOVERED", 0, 0);
-            cursor = 80; // Start typing on second line
+            
+            // 3-Second Wait Loop (approximate)
+            for(volatile int wait = 0; wait < 50000000; wait++); 
+            
+            // Clean up the recovery message
+            print_at("              ", 0, 0); 
+            cursor = 14 * 80;
         }
         else if (scancode < 128) {
             char letter = kbd_map[scancode];
@@ -85,7 +72,6 @@ void check_keyboard() {
                 vidptr[cursor * 2 + 1] = (vidptr[cursor * 2 + 1] & 0xF0) | 0x0F;
                 cursor++;
 
-                /* Shift buffer for "DEAN" check */
                 dean_check[0] = dean_check[1];
                 dean_check[1] = dean_check[2];
                 dean_check[2] = dean_check[3];
@@ -95,7 +81,7 @@ void check_keyboard() {
                     dean_check[2] == 'A' && dean_check[3] == 'N') {
                     for(int i=0; i<4000; i+=2) {
                         vidptr[i] = ' ';
-                        vidptr[i+1] = 0x1F; /* Blue Screen */
+                        vidptr[i+1] = 0x1F; 
                     }
                     print_at("DCON: DEAN BLUESCREEN. PRESS 'R' TO RECOVER", 10, 15);
                 }
@@ -110,7 +96,6 @@ void kernel_main() {
     cursor = 14 * 80;
     while(1) { 
         check_keyboard(); 
-        for(int d=0; d<1000; d++) { __asm__("nop"); }
     }
 }
 
