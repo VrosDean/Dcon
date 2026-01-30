@@ -115,7 +115,7 @@ void check_keyboard() {
 /* --- 5. Main Entry --- */
 void kernel_main() {
     draw_rainbow();
-    print_at("DCON v1.0 - DISK DRIVER LOADED", 12, 25);
+    print_at("DCON v1.0", 12, 25);
     cursor = 14 * 80;
     while(1) { 
         check_keyboard(); 
