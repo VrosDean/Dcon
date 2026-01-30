@@ -51,7 +51,7 @@ void draw_ui() {
     for (int col = 0; col < 80; col++) {
         int index = (24 * 80 + col) * 2;
         vidptr[index] = ' ';
-        vidptr[index + 1] = 0x00;
+        vidptr[index + 2] = 0x00;
     }
     print_at("DCON v1.0", 5, 35);
     print_at("DEAN CONSOLE", 6, 34);
@@ -88,7 +88,36 @@ void check_keyboard() {
         } 
         else if (scancode == 0x1C) { /* ENTER */
             run_command();
-            if (!is_green_screen) cursor = ((cursor / 80) + 1) * 80 + 5;
+            void run_command() {
+    /* 1. Check for "DEAN" */
+    if (cmd_buffer[0] == 'D' && cmd_buffer[1] == 'E' && 
+        cmd_buffer[2] == 'A' && cmd_buffer[3] == 'N') {
+        for(int i = 0; i < 4000; i += 2) {
+            vidptr[i] = ' ';
+            vidptr[i+1] = 0x2F; 
+        }
+        print_at("DEAN GREEN SCREEN ACTIVATED. PRESS R TO RESET.", 12, 18);
+        is_green_screen = 1;
+    }
+    /* 2. NEW: Check for "HELP" */
+    else if (cmd_buffer[0] == 'H' && cmd_buffer[1] == 'E' && 
+             cmd_buffer[2] == 'L' && cmd_buffer[3] == 'P') {
+        print_at("DCON COMMANDS:        ", 15, 5);
+        print_at("- DEAN : SECRET SCREEN", 16, 5);
+        print_at("- HELP : SHOW THIS    ", 17, 5);
+        print_at("- R    : RESET RAINBOW", 18, 5);
+        print_at("- CLS  : CLEAR BOX    ", 19, 5);
+    }
+    /* 3. Check for "CLS" */
+    else if (cmd_buffer[0] == 'C' && cmd_buffer[1] == 'L' && cmd_buffer[2] == 'S') {
+        draw_ui();
+    }
+
+    /* Reset buffer */
+    for(int i=0; i<80; i++) cmd_buffer[i] = 0;
+    cmd_idx = 0;
+}
+
         }
         else if (scancode == 0x13 && is_green_screen == 1) { /* SMART R */
             draw_ui();
