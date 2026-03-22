@@ -1,5 +1,4 @@
 # --- Multiboot2 Header ---
-# Must be 64-bit aligned and within the first 32KB of the file
 .section .multiboot_header
 .align 8
 header_start:
@@ -9,7 +8,7 @@ header_start:
     # Checksum: -(magic + arch + length)
     .long 0x100000000 - (0xe85250d6 + 0 + (header_end - header_start))
 
-    # End tag (required)
+    # End tag (required by spec)
     .short 0    # type
     .short 0    # flags
     .long 8     # size
@@ -21,28 +20,27 @@ header_end:
 .extern kernel_main
 
 _start:
-    # 1. Initialize the stack pointer
-    # C code requires a valid stack for local variables and function calls
+    # 1. Setup the stack
     mov $stack_top, %esp
 
-    # 2. Push Multiboot info (optional)
-    # GRUB puts the magic number in EAX and info pointer in EBX
-    push %rbx    # Push Multiboot info pointer (now 64-bit)
-    push %rax    # Push Magic number (now 64-bit)
+    # 2. Push Multiboot info for your C code
+    # We use 64-bit registers because you're targeting x86_64
+    push %rbx   # Pointer to Multiboot info structure
+    push %rax   # Magic number (0x36d76289)
 
-    # 3. Call your C kernel
+    # 3. Enter the C Kernel
     call kernel_main
 
-    # 4. Halt if kernel_main ever returns
+    # 4. If kernel_main returns, halt the CPU
     cli
-halt_loop:
+hang:
     hlt
-    jmp halt_loop
+    jmp hang
 
-# --- Stack Space ---
+# --- Stack Reserved Space ---
 .section .bss
 .align 16
 stack_bottom:
-    .skip 16384                     # Reserve 16KB for the stack
+    .skip 16384 # 16KB stack
 stack_top:
 
