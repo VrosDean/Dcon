@@ -1,34 +1,24 @@
 ENTRY(_start)
+OUTPUT_FORMAT(elf32-i386)
 
 SECTIONS
 {
-    /* GRUB and most bootloaders expect the kernel at 1MB */
+    /* Start at 1MB */
     . = 1M;
 
-    .text BLOCK(4K) : ALIGN(4K)
+    /* The 'boot' section MUST be at the very top */
+    .boot :
     {
-        /* Force the multiboot header to the absolute top of the file */
         KEEP(*(.multiboot_header))
+    }
+
+    .text :
+    {
         *(.text)
     }
 
-    /* Read-only data */
-    .rodata BLOCK(4K) : ALIGN(4K)
-    {
-        *(.rodata)
-    }
-
-    /* Initialized data */
-    .data BLOCK(4K) : ALIGN(4K)
-    {
-        *(.data)
-    }
-
-    /* Unitialized data (stack goes here) */
-    .bss BLOCK(4K) : ALIGN(4K)
-    {
-        *(COMMON)
-        *(.bss)
-    }
+    .rodata : { *(.rodata) }
+    .data   : { *(.data)   }
+    .bss    : { *(.bss)    }
 }
 
